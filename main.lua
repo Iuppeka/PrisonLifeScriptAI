@@ -1,5 +1,5 @@
--- FULL ROBLOX LOCAL SCRIPT (FINAL VERSION)
--- FEATURES: Starter, Movement, Aimbot, ESP, Coordinates HUD, Teleports, Weapons, Armor, Click-to-destroy, Hack Detection, Sounds
+-- FULL ROBLOX LOCAL SCRIPT (FINAL VERSION + AIMBOT UPGRADE)
+-- Added: Z = return to spawn, E = toggle aimbot + FOV circle, team-only aimbot, adjustable FOV circle
 
 repeat task.wait() until game:IsLoaded()
 
@@ -20,9 +20,13 @@ local Settings = {
     WalkSpeed = 16,
     JumpPower = 50,
 
+    -- AIMBOT
     Aimbot = false,
     AimbotFOV = 120,
+    AimbotSmooth = 0.08,
+    AimbotPart = "Head",
 
+    -- ESP
     ESP = true,
     TeamColors = {
         Police = Color3.fromRGB(0,170,255),
@@ -30,9 +34,43 @@ local Settings = {
         Criminals = Color3.fromRGB(255,170,0)
     },
 
+    -- OTHER
     GodMode = false,
-    DestroyEnabled = false
+    DestroyEnabled = false,
+    SpawnCFrame = nil
 }
+
+-------------------------------------------------
+-- SAVE SPAWN
+-------------------------------------------------
+local function saveSpawn()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        Settings.SpawnCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+    end
+end
+saveSpawn()
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    saveSpawn()
+end)
+
+-------------------------------------------------
+-- INPUT HOTKEYS
+-------------------------------------------------
+UserInputService.InputBegan:Connect(function(input,gpe)
+    if gpe then return end
+
+    if input.KeyCode == Enum.KeyCode.E then
+        Settings.Aimbot = not Settings.Aimbot
+        FOVCircle.Visible = Settings.Aimbot
+    end
+
+    if input.KeyCode == Enum.KeyCode.Z then
+        if Settings.SpawnCFrame and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = Settings.SpawnCFrame
+        end
+    end
+end)
 
 -------------------------------------------------
 -- COORDINATES HUD
@@ -47,7 +85,6 @@ coordLabel.BackgroundColor3 = Color3.fromRGB(20,20,20)
 coordLabel.TextColor3 = Color3.fromRGB(0,255,255)
 coordLabel.TextScaled = true
 coordLabel.Font = Enum.Font.GothamBold
-coordLabel.Text = "X:0 Y:0 Z:0"
 
 RunService.RenderStepped:Connect(function()
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -58,7 +95,58 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -------------------------------------------------
--- MAIN GUI SETUP
+-- AIMBOT FOV CIRCLE
+-------------------------------------------------
+local fovGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+fovGui.ResetOnSpawn = false
+
+FOVCircle = Instance.new("Frame", fovGui)
+FOVCircle.AnchorPoint = Vector2.new(0.5,0.5)
+FOVCircle.Position = UDim2.fromScale(0.5,0.5)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 2
+FOVCircle.BorderColor3 = Color3.fromRGB(0,170,255)
+FOVCircle.Visible = false
+Instance.new("UICorner",FOVCircle).CornerRadius = UDim.new(1,0)
+
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Size = UDim2.fromOffset(Settings.AimbotFOV*6,Settings.AimbotFOV*6)
+end)
+
+-------------------------------------------------
+-- AIMBOT LOGIC (TEAM ONLY)
+-------------------------------------------------
+local function getTarget()
+    local best, angle = nil, Settings.AimbotFOV
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Team == LocalPlayer.Team then
+            if p.Character and p.Character:FindFirstChild(Settings.AimbotPart) then
+                local part = p.Character[Settings.AimbotPart]
+                local dir = (part.Position - Camera.CFrame.Position).Unit
+                local a = math.deg(math.acos(Camera.CFrame.LookVector:Dot(dir)))
+                if a < angle then
+                    angle = a
+                    best = part
+                end
+            end
+        end
+    end
+    return best
+end
+
+RunService.RenderStepped:Connect(function()
+    if not Settings.Aimbot then return end
+    local t = getTarget()
+    if t then
+        Camera.CFrame = Camera.CFrame:Lerp(
+            CFrame.new(Camera.CFrame.Position, t.Position),
+            Settings.AimbotSmooth
+        )
+    end
+end)
+
+-------------------------------------------------
+-- MAIN GUI
 -------------------------------------------------
 local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 gui.ResetOnSpawn = false
@@ -72,7 +160,6 @@ main.Active = true
 main.Draggable = true
 Instance.new("UICorner",main).CornerRadius = UDim.new(0,12)
 
--- TITLE
 local title = Instance.new("TextLabel", main)
 title.Size = UDim2.fromScale(1,0.12)
 title.Text = "Hi, "..LocalPlayer.Name.."!"
@@ -81,7 +168,6 @@ title.TextScaled = true
 title.TextColor3 = Color3.fromRGB(180,180,180)
 title.BackgroundColor3 = Color3.fromRGB(15,15,15)
 
--- CONTENT FRAME
 local content = Instance.new("Frame", main)
 content.Size = UDim2.fromScale(1,0.76)
 content.Position = UDim2.fromScale(0,0.12)
@@ -127,7 +213,7 @@ function updatePage()
     clear()
     if Settings.Page==1 then
         label("WELCOME",0.05)
-        label("Use arrows to navigate",0.18)
+        label("E = Toggle Aimbot | Z = Return to Spawn",0.18)
 
     elseif Settings.Page==2 then
         label("MOVEMENT",0.05)
@@ -156,11 +242,19 @@ function updatePage()
         table.insert(elements,jp)
 
     elseif Settings.Page==3 then
-        label("AIMBOT",0.05)
-        button(Settings.Aimbot and "Disable Aimbot" or "Enable Aimbot",0.2,function()
-            Settings.Aimbot = not Settings.Aimbot
+        label("AIMBOT SETTINGS",0.05)
+        label("FOV Size",0.2)
+        local fov = Instance.new("TextBox",content)
+        fov.Size = UDim2.fromScale(0.9,0.07)
+        fov.Position = UDim2.fromScale(0.05,0.28)
+        fov.Text = Settings.AimbotFOV
+        fov.BackgroundColor3 = Color3.fromRGB(40,40,40)
+        fov.TextScaled = true
+        fov.FocusLost:Connect(function()
+            local v = tonumber(fov.Text)
+            if v then Settings.AimbotFOV=v end
         end)
-        label("FOV: "..Settings.AimbotFOV,0.35)
+        table.insert(elements,fov)
 
     elseif Settings.Page==4 then
         label("ESP",0.05)
@@ -169,39 +263,9 @@ function updatePage()
         end)
 
     elseif Settings.Page==5 then
-        label("TELEPORTS & WEAPONS",0.05)
-        button("TP: Police",0.15,function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(818.1,100,2235.8)
-            end
-        end)
-        button("TP: Yard",0.25,function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(792.6,98,2457.7)
-            end
-        end)
-        button("TP: Kitchen Escape",0.35,function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(897.0,111.9,2209.3)
-            end
-        end)
-        button("Get All Weapons",0.45,function()
-            local wFolder = ReplicatedStorage:FindFirstChild("Weapons")
-            if wFolder then
-                for _,w in ipairs(wFolder:GetChildren()) do w:Clone().Parent=LocalPlayer.Backpack end
-            end
-        end)
-
-    elseif Settings.Page==6 then
         label("ARMOR / GOD MODE",0.05)
         button(Settings.GodMode and "Disable Armor" or "Enable Armor",0.2,function()
             Settings.GodMode = not Settings.GodMode
-        end)
-
-    elseif Settings.Page==7 then
-        label("UTILITIES",0.05)
-        button(Settings.DestroyEnabled and "Disable Click-to-Destroy" or "Enable Click-to-Destroy",0.15,function()
-            Settings.DestroyEnabled = not Settings.DestroyEnabled
         end)
     end
 end
@@ -224,7 +288,7 @@ next.Parent = main
 next.Position = UDim2.fromScale(0.86,0.92)
 next.Text = ">"
 next.MouseButton1Click:Connect(function()
-    Settings.Page = math.min(7,Settings.Page+1)
+    Settings.Page = math.min(5,Settings.Page+1)
     updatePage()
 end)
 
