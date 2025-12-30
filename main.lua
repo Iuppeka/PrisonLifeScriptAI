@@ -5,7 +5,7 @@ print("Running PrisonLifeScriptAI v" .. SCRIPT_VERSION)
 -- your actual script code below
 
 -- FULLY FIXED ROBLOX LOCAL SCRIPT
--- Features: WalkSpeed/JumpPower sliders, ESP by team, Armor/GodMode, Teleport dropdowns, clean GUI
+-- Movement, ESP per team, Armor/GodMode, clean GUI with proper pages
 
 repeat task.wait() until game:IsLoaded()
 
@@ -25,7 +25,7 @@ local Settings = {
     Page = 1
 }
 
--- HELPER FUNCTIONS
+-- APPLY WALK/JUMP
 local function applyWalkJump()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         local hum = LocalPlayer.Character.Humanoid
@@ -34,9 +34,16 @@ local function applyWalkJump()
     end
 end
 
+-- ARMOR / GOD MODE
 local function applyArmor()
     if not LocalPlayer.Character then return end
     local char = LocalPlayer.Character
+    local hum = char:FindFirstChild("Humanoid")
+    if hum then
+        hum.MaxHealth = math.huge
+        hum.Health = math.huge
+        hum.Died:Connect(function() task.wait(0.1) hum.Health = math.huge end)
+    end
     if char:FindFirstChild("__Armor") then char.__Armor:Destroy() end
     local folder = Instance.new("Folder", char)
     folder.Name = "__Armor"
@@ -165,7 +172,8 @@ end
 -- PAGE UPDATE
 function updatePage()
     clear()
-    if Settings.Page==1 then label("Movement Sliders",0.05)
+    if Settings.Page==1 then
+        label("Movement Sliders",0.05)
         slider(16,500,0.16,Settings.WalkSpeed,function(v) Settings.WalkSpeed=v; applyWalkJump() end)
         slider(50,500,0.28,Settings.JumpPower,function(v) Settings.JumpPower=v; applyWalkJump() end)
     elseif Settings.Page==2 then
@@ -206,3 +214,7 @@ Instance.new("UICorner", next)
 next.MouseButton1Click:Connect(function() Settings.Page=math.min(3,Settings.Page+1); updatePage() end)
 
 updatePage()
+
+-- Ensure Humanoid updates on respawn
+LocalPlayer.CharacterAdded:Connect(function(char) task.wait(0.2); applyWalkJump(); if Settings.ArmorEnabled then applyArmor() end end)
+
