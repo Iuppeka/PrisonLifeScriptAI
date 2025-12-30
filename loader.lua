@@ -1,21 +1,35 @@
 -- loader.lua
 local BASE = "https://raw.githubusercontent.com/Iuppeka/PrisonLifeScriptAI/main/"
 
-local function get(url)
-    return game:HttpGet(url .. "?v=" .. tostring(os.time()), true)
+-- Helper function to fetch code safely
+local function safeHttpGet(url)
+    local success, result = pcall(function()
+        return game:HttpGet(url .. "?v=" .. tick(), true)
+    end)
+    if not success then
+        warn("HttpGet failed:", result)
+        return nil
+    end
+    return result
 end
 
--- get latest version
-local latestVersion = get(BASE .. "version.txt")
-latestVersion = latestVersion:gsub("%s+", "")
+-- Fetch main.lua
+local code = safeHttpGet(BASE .. "main.lua")
+if not code then
+    warn("Failed to fetch main.lua")
+    return
+end
 
--- load main script
-local success, err = pcall(function()
-    loadstring(get(BASE .. "main.lua"))()
-end)
+-- Load and run main.lua safely
+local fn, err = loadstring(code)
+if not fn then
+    warn("Loadstring failed:", err)
+    return
+end
 
-if not success then
-    warn("Script failed to load:", err)
+local ok, runErr = pcall(fn)
+if not ok then
+    warn("Error running main.lua:", runErr)
 else
-    print("PrisonLifeScriptAI loaded | Version:", latestVersion)
+    print("PrisonLifeScriptAI loaded successfully!")
 end
