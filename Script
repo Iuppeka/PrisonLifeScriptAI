@@ -1,0 +1,484 @@
+-- FULL ALL-IN-ONE LOCAL SCRIPT
+
+repeat task.wait() until game:IsLoaded()
+
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- SETTINGS
+local Settings = {
+    AimbotEnabled = false,
+    AimbotFOV = 120,
+    AimbotSmoothness = 0.05,
+    AimbotPart = "Head",
+    AimbotTargets = {}, -- table of players to target or ignore
+    ESPEnabled = true,
+    ESPColor = Color3.fromRGB(0,170,255),
+    ESPTargetType = "All", -- "Player", "Team", "All"
+    ESPTargetPlayer = nil,
+    DestroyPartsEnabled = false,
+    FlyEnabled = false,
+    FlySpeed = 50,
+    NoclipEnabled = false,
+    Page = 1,
+    SpawnCFrame = nil,
+    SavedCoordinate = nil
+}
+
+-- SPAWN POSITION
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+    Settings.SpawnCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+end
+Players.PlayerAdded:Connect(function(p)
+    if p == LocalPlayer and LocalPlayer.Character then
+        Settings.SpawnCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+    end
+end)
+
+-- SOUND FUNCTION
+local function playSound(id, parent)
+    local s = Instance.new("Sound", parent or workspace)
+    s.SoundId = id
+    s.Volume = 0.5
+    s:Play()
+    s.Ended:Connect(function() s:Destroy() end)
+end
+UserInputService.InputBegan:Connect(function(input,gpe)
+    if gpe then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        playSound("rbxassetid://9118831966")
+    end
+end)
+
+---------------------------------------------------
+-- AIMBOT
+---------------------------------------------------
+UserInputService.InputBegan:Connect(function(input,gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        Settings.AimbotEnabled = not Settings.AimbotEnabled
+    end
+end)
+
+local function validTarget(p)
+    if p == LocalPlayer then return false end
+    if not p.Character or not p.Character:FindFirstChild(Settings.AimbotPart) then return false end
+    if #Settings.AimbotTargets > 0 then
+        return table.find(Settings.AimbotTargets,p.Name) ~= nil
+    end
+    return true
+end
+
+local function getTarget()
+    local best, angle = nil, Settings.AimbotFOV
+    for _,p in ipairs(Players:GetPlayers()) do
+        if validTarget(p) then
+            local part = p.Character[Settings.AimbotPart]
+            local dir = (part.Position - Camera.CFrame.Position).Unit
+            local a = math.deg(math.acos(Camera.CFrame.LookVector:Dot(dir)))
+            if a < angle then
+                angle = a
+                best = part
+            end
+        end
+    end
+    return best
+end
+
+RunService.RenderStepped:Connect(function()
+    if not Settings.AimbotEnabled then return end
+    local t = getTarget()
+    if t then
+        Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, t.Position), Settings.AimbotSmoothness)
+    end
+end)
+
+-- FOV Circle
+local fovGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+fovGui.ResetOnSpawn = false
+local circle = Instance.new("Frame", fovGui)
+circle.AnchorPoint = Vector2.new(0.5,0.5)
+circle.Position = UDim2.fromScale(0.5,0.5)
+circle.BackgroundTransparency = 1
+circle.BorderSizePixel = 2
+circle.BorderColor3 = Settings.ESPColor
+Instance.new("UICorner", circle).CornerRadius = UDim.new(1,0)
+RunService.RenderStepped:Connect(function()
+    circle.Size = UDim2.fromOffset(Settings.AimbotFOV*6,Settings.AimbotFOV*6)
+end)
+
+---------------------------------------------------
+-- ESP
+---------------------------------------------------
+local esp = {}
+local function applyESP(p,color)
+    if esp[p] or not p.Character then return end
+    local h = Instance.new("Highlight")
+    h.FillColor = color or Settings.ESPColor
+    h.FillTransparency = 0.4
+    h.OutlineTransparency = 1
+    h.Parent = p.Character
+    esp[p] = h
+end
+local function removeESP(p)
+    if esp[p] then esp[p]:Destroy() esp[p]=nil end
+end
+local function updateESP()
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            if Settings.ESPEnabled then
+                if Settings.ESPTargetType=="Player" and p==Settings.ESPTargetPlayer then
+                    applyESP(p)
+                elseif Settings.ESPTargetType=="Team" and p.Team==LocalPlayer.Team then
+                    applyESP(p)
+                elseif Settings.ESPTargetType=="All" then
+                    applyESP(p)
+                else
+                    removeESP(p)
+                end
+            else
+                removeESP(p)
+            end
+        end
+    end
+end
+Players.PlayerAdded:Connect(updateESP)
+Players.PlayerRemoving:Connect(function(p) removeESP(p) end)
+RunService.Heartbeat:Connect(updateESP)
+
+---------------------------------------------------
+-- COORDINATES HUD
+---------------------------------------------------
+local coordGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+coordGui.ResetOnSpawn = false
+local coordLabel = Instance.new("TextLabel", coordGui)
+coordLabel.AnchorPoint = Vector2.new(0,0)
+coordLabel.Position = UDim2.fromScale(0,0)
+coordLabel.Size = UDim2.fromScale(0.2,0.05)
+coordLabel.BackgroundTransparency = 0.5
+coordLabel.BackgroundColor3 = Color3.fromRGB(40,40,40)
+coordLabel.TextColor3 = Color3.fromRGB(0,255,255)
+coordLabel.TextScaled = true
+coordLabel.Font = Enum.Font.GothamBold
+coordLabel.Text = "X:0 Y:0 Z:0"
+Instance.new("UICorner", coordLabel).CornerRadius = UDim.new(0,8)
+RunService.RenderStepped:Connect(function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local pos = LocalPlayer.Character.HumanoidRootPart.Position
+        coordLabel.Text = string.format("X: %.1f Y: %.1f Z: %.1f", pos.X,pos.Y,pos.Z)
+    end
+end)
+
+---------------------------------------------------
+-- GUI CREATION (Main Metallic Look)
+---------------------------------------------------
+local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+gui.ResetOnSpawn = false
+local main = Instance.new("Frame", gui)
+main.AnchorPoint = Vector2.new(0.5,0.5)
+main.Position = UDim2.fromScale(0.5,0.5)
+main.Size = UDim2.fromScale(0.5,0.65)
+main.BackgroundColor3 = Color3.fromRGB(50,50,50)
+main.BackgroundTransparency = 0
+main.Active = true
+main.Draggable = true
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,12)
+
+-- Title and start greeting
+local startLabel = Instance.new("TextLabel", main)
+startLabel.Size = UDim2.fromScale(1,0.12)
+startLabel.Position = UDim2.fromScale(0,0)
+startLabel.Text = "Hi, "..LocalPlayer.Name.."!"
+startLabel.Font = Enum.Font.GothamBold
+startLabel.TextScaled = true
+startLabel.TextColor3 = Color3.fromRGB(0,170,255)
+startLabel.BackgroundTransparency = 0.2
+startLabel.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Instance.new("UICorner", startLabel).CornerRadius = UDim.new(0,8)
+
+-- Content frame
+local content = Instance.new("Frame", main)
+content.Size = UDim2.fromScale(1,0.8)
+content.Position = UDim2.fromScale(0,0.12)
+content.BackgroundTransparency = 1
+local contentElements = {}
+local function clearContent() for _,v in ipairs(contentElements) do v:Destroy() end contentElements={} end
+local function addLabel(text,posY)
+    local l = Instance.new("TextLabel", content)
+    l.Size = UDim2.fromScale(0.95,0.08)
+    l.Position = UDim2.fromScale(0.025,posY)
+    l.Text = text
+    l.Font = Enum.Font.GothamBold
+    l.TextScaled = true
+    l.TextColor3 = Color3.fromRGB(0,170,255)
+    l.BackgroundTransparency = 0.3
+    l.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    Instance.new("UICorner", l).CornerRadius=UDim.new(0,6)
+    table.insert(contentElements,l)
+end
+local function addButton(text,posY,callback)
+    local b = Instance.new("TextButton", content)
+    b.Size = UDim2.fromScale(0.9,0.07)
+    b.Position = UDim2.fromScale(0.05,posY)
+    b.Text = text
+    b.Font = Enum.Font.Gotham
+    b.TextScaled = true
+    b.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    b.TextColor3 = Color3.fromRGB(255,255,255)
+    Instance.new("UICorner", b)
+    b.MouseEnter:Connect(function() TweenService:Create(b,TweenInfo.new(0.1),{Size=UDim2.fromScale(0.92,0.075)}):Play() end)
+    b.MouseLeave:Connect(function() TweenService:Create(b,TweenInfo.new(0.1),{Size=UDim2.fromScale(0.9,0.07)}):Play() end)
+    b.MouseButton1Click:Connect(function() playSound("rbxassetid://9118831966") callback() end)
+    table.insert(contentElements,b)
+end
+
+-- Navigation buttons
+local prevBtn = Instance.new("TextButton", main)
+prevBtn.Size = UDim2.fromScale(0.12,0.06)
+prevBtn.Position = UDim2.fromScale(0.02,0.93)
+prevBtn.Text = "<"
+prevBtn.Font = Enum.Font.GothamBold
+prevBtn.TextScaled = true
+prevBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+prevBtn.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", prevBtn)
+prevBtn.MouseButton1Click:Connect(function() Settings.Page=math.max(1,Settings.Page-1) updatePage() end)
+
+local nextBtn = Instance.new("TextButton", main)
+nextBtn.Size = UDim2.fromScale(0.12,0.06)
+nextBtn.Position = UDim2.fromScale(0.86,0.93)
+nextBtn.Text = ">"
+nextBtn.Font = Enum.Font.GothamBold
+nextBtn.TextScaled = true
+nextBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+nextBtn.TextColor3 = Color3.fromRGB(255,255,255)
+Instance.new("UICorner", nextBtn)
+nextBtn.MouseButton1Click:Connect(function() Settings.Page=math.min(6,Settings.Page+1) updatePage() end)
+
+---------------------------------------------------
+-- FLY AND NOCLIP
+---------------------------------------------------
+local flyConnection
+local function startFly()
+    if not LocalPlayer.Character then return end
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+    if not hrp or not humanoid then return end
+    humanoid.PlatformStand = true
+    flyConnection = RunService.RenderStepped:Connect(function()
+        local move = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + (Camera.CFrame.LookVector) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - (Camera.CFrame.LookVector) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - (Camera.CFrame.RightVector) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + (Camera.CFrame.RightVector) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0,1,0) end
+        hrp.Velocity = move.Unit * Settings.FlySpeed
+        if Settings.NoclipEnabled then
+            for _,part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name~="HumanoidRootPart" then
+                    part.CanCollide=false
+                end
+            end
+        end
+    end)
+end
+local function stopFly()
+    if flyConnection then flyConnection:Disconnect() flyConnection=nil end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.PlatformStand=false
+        for _,part in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide=true
+            end
+        end
+    end
+end
+
+---------------------------------------------------
+-- CLICK TO DESTROY
+---------------------------------------------------
+Mouse.Button1Down:Connect(function()
+    if Settings.DestroyPartsEnabled then
+        local target = Mouse.Target
+        if target then target:Destroy() end
+    end
+end)
+
+---------------------------------------------------
+-- HACK DETECTION
+---------------------------------------------------
+local detectedPlayers = {}
+local hackGui = Instance.new("Frame")
+hackGui.Size = UDim2.fromScale(0.28,0.4)
+hackGui.Position = UDim2.fromScale(0.7,0.2)
+hackGui.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Instance.new("UICorner", hackGui).CornerRadius=UDim.new(0,12)
+hackGui.Parent = gui
+
+local function updateHackDetection()
+    detectedPlayers = {}
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = p.Character.HumanoidRootPart
+            if hrp.Velocity.Magnitude>150 or hrp.Position.Y>500 then
+                table.insert(detectedPlayers,p.Name)
+            end
+        end
+    end
+    hackGui:ClearAllChildren()
+    for i,name in ipairs(detectedPlayers) do
+        local l=Instance.new("TextLabel",hackGui)
+        l.Size=UDim2.fromScale(1,0.1)
+        l.Position=UDim2.fromScale(0,(i-1)*0.1)
+        l.Text=name.." - Suspicious"
+        l.Font=Enum.Font.GothamBold
+        l.TextColor3=Color3.fromRGB(255,50,50)
+        l.TextScaled=true
+        l.BackgroundTransparency=1
+    end
+end
+RunService.Heartbeat:Connect(updateHackDetection)
+
+---------------------------------------------------
+-- PAGE UPDATE FUNCTION (Weapons, Teleports, Utilities)
+---------------------------------------------------
+function updatePage()
+    clearContent()
+    if Settings.Page == 1 then
+        addLabel("AIMBOT",0.05)
+        addLabel("Press E to Toggle Aim",0.2)
+    elseif Settings.Page == 2 then
+        addLabel("ESP",0.05)
+        addButton(Settings.ESPEnabled and "Disable ESP" or "Enable ESP",0.2,function()
+            Settings.ESPEnabled = not Settings.ESPEnabled
+        end)
+        addLabel("ESP Color (RGB)",0.35)
+        -- RGB sliders can be added here as separate TextBoxes or sliders
+    elseif Settings.Page == 3 then
+        addLabel("WEAPONS & TELEPORTS",0.05)
+        addButton("Get All Weapons",0.15,function()
+            local weaponFolder = ReplicatedStorage:FindFirstChild("Weapons")
+            if weaponFolder then
+                for _,w in ipairs(weaponFolder:GetChildren()) do
+                    local clone = w:Clone()
+                    clone.Parent = LocalPlayer.Backpack
+                end
+            end
+        end)
+        addButton("TP: Weapons Area",0.25,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(-936.4,94.1,2046.7)
+            end
+        end)
+        addButton("TP: Police",0.35,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(818.1,100,2235.8)
+            end
+        end)
+        addButton("TP: Yard",0.45,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(792.6,98,2457.7)
+            end
+        end)
+        addButton("TP: Kitchen Escape",0.55,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(897.0,111.9,2209.3)
+            end
+        end)
+        addButton("TP to Anything",0.65,function()
+            local popup = Instance.new("ScreenGui",LocalPlayer.PlayerGui)
+            local frame = Instance.new("Frame",popup)
+            frame.Size=UDim2.fromScale(0.3,0.2)
+            frame.Position=UDim2.fromScale(0.35,0.4)
+            frame.BackgroundColor3=Color3.fromRGB(40,40,40)
+            Instance.new("UICorner",frame).CornerRadius=UDim.new(0,10)
+            local textBox=Instance.new("TextBox",frame)
+            textBox.Size=UDim2.fromScale(0.8,0.3)
+            textBox.Position=UDim2.fromScale(0.1,0.2)
+            textBox.PlaceholderText="X,Y,Z or Player Name"
+            local ok=Instance.new("TextButton",frame)
+            ok.Size=UDim2.fromScale(0.35,0.25)
+            ok.Position=UDim2.fromScale(0.1,0.6)
+            ok.Text="Go"
+            local cancel=Instance.new("TextButton",frame)
+            cancel.Size=UDim2.fromScale(0.35,0.25)
+            cancel.Position=UDim2.fromScale(0.55,0.6)
+            cancel.Text="Cancel"
+            ok.MouseButton1Click:Connect(function()
+                local input=textBox.Text
+                local x,y,z=string.match(input,"([%d%-%.]+),([%d%-%.]+),([%d%-%.]+)")
+                if x and y and z and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame=CFrame.new(tonumber(x),tonumber(y),tonumber(z))
+                else
+                    local p=Players:FindFirstChild(input)
+                    if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        LocalPlayer.Character.HumanoidRootPart.CFrame=p.Character.HumanoidRootPart.CFrame
+                    end
+                end
+                popup:Destroy()
+            end)
+            cancel.MouseButton1Click:Connect(function() popup:Destroy() end)
+        end)
+    elseif Settings.Page == 4 then
+        addLabel("UTILITIES",0.05)
+        addButton("Share Coordinates in Chat",0.15,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local pos = LocalPlayer.Character.HumanoidRootPart.Position
+                game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer("My Coordinates: "..tostring(pos),"All")
+            end
+        end)
+        addButton("Save Coordinate (Copy)",0.25,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                Settings.SavedCoordinate = LocalPlayer.Character.HumanoidRootPart.Position
+                setclipboard(tostring(Settings.SavedCoordinate))
+            end
+        end)
+        addButton("Return to Spawn",0.35,function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and Settings.SpawnCFrame then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = Settings.SpawnCFrame
+            end
+        end)
+        addButton("Click-to-Destroy Toggle",0.45,function()
+            Settings.DestroyPartsEnabled = not Settings.DestroyPartsEnabled
+        end)
+        addButton("Fly GUI Toggle",0.55,function()
+            Settings.FlyEnabled = not Settings.FlyEnabled
+            if Settings.FlyEnabled then startFly() else stopFly() end
+        end)
+        addLabel("Fly Speed",0.65)
+        local slider = Instance.new("TextBox", content)
+        slider.Size = UDim2.fromScale(0.9,0.05)
+        slider.Position = UDim2.fromScale(0.05,0.7)
+        slider.Text = tostring(Settings.FlySpeed)
+        slider.TextColor3 = Color3.fromRGB(0,255,255)
+        slider.BackgroundColor3 = Color3.fromRGB(40,40,40)
+        slider.TextScaled = true
+        slider.ClearTextOnFocus = false
+        slider.FocusLost:Connect(function(enter)
+            local val = tonumber(slider.Text)
+            if val then Settings.FlySpeed = val end
+            slider.Text = tostring(Settings.FlySpeed)
+        end)
+        addButton("Noclip Toggle",0.8,function()
+            Settings.NoclipEnabled = not Settings.NoclipEnabled
+        end)
+    elseif Settings.Page == 5 then
+        addLabel("HACK DETECTION",0.05)
+        for i,name in ipairs(detectedPlayers) do
+            addLabel(name.." - Suspicious",0.1+(i*0.08))
+        end
+    end
+end
+updatePage()
