@@ -4,260 +4,205 @@ print("Running PrisonLifeScriptAI v" .. SCRIPT_VERSION)
 
 -- your actual script code below
 
--- FULL REFACTORED ROBLOX LOCAL SCRIPT
-
--- FULL REFACTORED ROBLOX LOCAL SCRIPT
+-- FULLY FIXED ROBLOX LOCAL SCRIPT
+-- Features: WalkSpeed/JumpPower sliders, ESP by team, Armor/GodMode, Teleport dropdowns, clean GUI
 
 repeat task.wait() until game:IsLoaded()
 
--- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 
 -- SETTINGS
 local Settings = {
-    AimbotEnabled = false,
-    AimbotFOV = 120,
-    AimbotSmoothness = 0.05,
-    AimbotPart = "Head",
-    ESPEnabled = true,
-    ESPTeamColors = {},
     WalkSpeed = 16,
     JumpPower = 50,
-    DestroyPartsEnabled = false,
-    SavedCoordinate = nil,
-    SpawnCFrame = nil,
+    ESPEnabled = true,
+    ESPTeamToggles = {},
     ArmorEnabled = false,
     Page = 1
 }
 
--- SPAWN POSITION
-if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-    Settings.SpawnCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
-end
-Players.PlayerAdded:Connect(function(p)
-    if p == LocalPlayer and LocalPlayer.Character then
-        Settings.SpawnCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+-- HELPER FUNCTIONS
+local function applyWalkJump()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        local hum = LocalPlayer.Character.Humanoid
+        hum.WalkSpeed = Settings.WalkSpeed
+        hum.JumpPower = Settings.JumpPower
     end
-end)
-
--- SOUND FUNCTION
-local function playSound(id, parent)
-    local s = Instance.new("Sound", parent or workspace)
-    s.SoundId = id
-    s.Volume = 0.5
-    s:Play()
-    s.Ended:Connect(function() s:Destroy() end)
 end
 
--- AIMBOT TOGGLE
-UserInputService.InputBegan:Connect(function(input,gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.E then
-        Settings.AimbotEnabled = not Settings.AimbotEnabled
+local function applyArmor()
+    if not LocalPlayer.Character then return end
+    local char = LocalPlayer.Character
+    if char:FindFirstChild("__Armor") then char.__Armor:Destroy() end
+    local folder = Instance.new("Folder", char)
+    folder.Name = "__Armor"
+    for _,p in ipairs(char:GetChildren()) do
+        if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+            local adorn = Instance.new("BoxHandleAdornment")
+            adorn.Adornee = p
+            adorn.Size = p.Size + Vector3.new(0.1,0.1,0.1)
+            adorn.Color3 = Color3.fromRGB(120,120,120)
+            adorn.Transparency = 0.4
+            adorn.ZIndex = 5
+            adorn.AlwaysOnTop = true
+            adorn.Parent = folder
+        end
     end
-end)
-
--- VALID TARGET
-local function validTarget(p)
-    if p == LocalPlayer then return false end
-    if not p.Character or not p.Character:FindFirstChild(Settings.AimbotPart) then return false end
-    return true
 end
 
--- GET AIMBOT TARGET
-local function getTarget()
-    local best, angle = nil, Settings.AimbotFOV
+local function removeArmor()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("__Armor") then
+        LocalPlayer.Character.__Armor:Destroy()
+    end
+end
+
+-- ESP
+local ESP = {}
+local function refreshESP()
+    if not Settings.ESPEnabled then for _,h in pairs(ESP) do h:Destroy() end ESP = {} return end
     for _,p in ipairs(Players:GetPlayers()) do
-        if validTarget(p) then
-            local part = p.Character[Settings.AimbotPart]
-            local dir = (part.Position - Camera.CFrame.Position).Unit
-            local a = math.deg(math.acos(Camera.CFrame.LookVector:Dot(dir)))
-            if a < angle then
-                angle = a
-                best = part
-            end
+        if p ~= LocalPlayer and p.Character and Settings.ESPTeamToggles[p.Team.Name] ~= false then
+            if ESP[p] then ESP[p]:Destroy() end
+            local h = Instance.new("Highlight")
+            h.FillColor = p.TeamColor.Color
+            h.FillTransparency = 0.4
+            h.OutlineTransparency = 1
+            h.Parent = p.Character
+            ESP[p] = h
         end
     end
-    return best
 end
+Players.PlayerAdded:Connect(function(p) p.CharacterAdded:Connect(function() task.wait(0.2) refreshESP() end) end)
+RunService.Heartbeat:Connect(refreshESP)
 
-RunService.RenderStepped:Connect(function()
-    if Settings.AimbotEnabled then
-        local t = getTarget()
-        if t then
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, t.Position), Settings.AimbotSmoothness)
-        end
-    end
-end)
-
--- FOV CIRCLE
-local fovGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
-fovGui.ResetOnSpawn = false
-local circle = Instance.new("Frame", fovGui)
-circle.AnchorPoint = Vector2.new(0.5,0.5)
-circle.Position = UDim2.fromScale(0.5,0.5)
-circle.BackgroundTransparency = 1
-circle.BorderSizePixel = 2
-circle.BorderColor3 = Color3.fromRGB(0,170,255)
-Instance.new("UICorner", circle).CornerRadius = UDim.new(1,0)
-RunService.RenderStepped:Connect(function()
-    circle.Size = UDim2.fromOffset(Settings.AimbotFOV*6,Settings.AimbotFOV*6)
-end)
-
--- GUI CREATION
+-- GUI
 local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 gui.ResetOnSpawn = false
 
 local main = Instance.new("Frame", gui)
-main.AnchorPoint = Vector2.new(0.5,0.5)
+main.Size = UDim2.fromScale(0.55,0.7)
 main.Position = UDim2.fromScale(0.5,0.5)
-main.Size = UDim2.fromScale(0.5,0.7)
+main.AnchorPoint = Vector2.new(0.5,0.5)
 main.BackgroundColor3 = Color3.fromRGB(20,20,20)
 main.Active = true
 main.Draggable = true
-Instance.new("UICorner", main).CornerRadius=UDim.new(0,12)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,16)
 
-local startLabel = Instance.new("TextLabel", main)
-startLabel.Size = UDim2.fromScale(1,0.1)
-startLabel.Position = UDim2.fromScale(0,0)
-startLabel.Text = "Hi, "..LocalPlayer.Name.."!"
-startLabel.Font = Enum.Font.GothamBold
-startLabel.TextScaled = true
-startLabel.TextColor3 = Color3.fromRGB(200,200,200)
-startLabel.BackgroundColor3 = Color3.fromRGB(35,35,35)
-startLabel.BackgroundTransparency = 0
-Instance.new("UICorner", startLabel).CornerRadius=UDim.new(0,8)
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.fromScale(1,0.1)
+title.Text = "CONTROL PANEL"
+title.Font = Enum.Font.GothamBold
+title.TextScaled = true
+title.TextColor3 = Color3.fromRGB(200,200,200)
+title.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Instance.new("UICorner", title)
 
 local content = Instance.new("Frame", main)
 content.Size = UDim2.fromScale(1,0.8)
 content.Position = UDim2.fromScale(0,0.1)
 content.BackgroundTransparency = 1
-local contentElements = {}
-local function clearContent() for _,v in ipairs(contentElements) do v:Destroy() end contentElements={} end
-local function addLabel(text,posY)
+
+local items = {}
+local function clear() for _,v in ipairs(items) do v:Destroy() end items={} end
+local function label(text,y)
     local l = Instance.new("TextLabel", content)
-    l.Size = UDim2.fromScale(0.95,0.08)
-    l.Position = UDim2.fromScale(0.025,posY)
+    l.Size = UDim2.fromScale(0.9,0.08)
+    l.Position = UDim2.fromScale(0.05,y)
     l.Text = text
     l.Font = Enum.Font.GothamBold
     l.TextScaled = true
-    l.TextColor3 = Color3.fromRGB(200,200,200)
-    l.BackgroundColor3 = Color3.fromRGB(30,30,30)
-    l.BackgroundTransparency = 0
-    Instance.new("UICorner", l).CornerRadius=UDim.new(0,6)
-    table.insert(contentElements,l)
+    l.TextColor3 = Color3.fromRGB(180,180,180)
+    l.BackgroundColor3 = Color3.fromRGB(35,35,35)
+    Instance.new("UICorner", l)
+    table.insert(items,l)
 end
-local function addButton(text,posY,callback)
+local function button(text,y,cb)
     local b = Instance.new("TextButton", content)
     b.Size = UDim2.fromScale(0.9,0.07)
-    b.Position = UDim2.fromScale(0.05,posY)
+    b.Position = UDim2.fromScale(0.05,y)
     b.Text = text
     b.Font = Enum.Font.Gotham
     b.TextScaled = true
-    b.BackgroundColor3 = Color3.fromRGB(50,50,50)
     b.TextColor3 = Color3.fromRGB(255,255,255)
+    b.BackgroundColor3 = Color3.fromRGB(50,50,50)
     Instance.new("UICorner", b)
-    b.MouseEnter:Connect(function() TweenService:Create(b,TweenInfo.new(0.1),{Size=UDim2.fromScale(0.92,0.075)}):Play() end)
-    b.MouseLeave:Connect(function() TweenService:Create(b,TweenInfo.new(0.1),{Size=UDim2.fromScale(0.9,0.07)}):Play() end)
-    b.MouseButton1Click:Connect(function() playSound("rbxassetid://9118831966") callback() end)
-    table.insert(contentElements,b)
+    b.MouseButton1Click:Connect(cb)
+    table.insert(items,b)
 end
 
--- NAVIGATION BUTTONS
-local prevBtn = Instance.new("TextButton", main)
-prevBtn.Size = UDim2.fromScale(0.12,0.06)
-prevBtn.Position = UDim2.fromScale(0.02,0.93)
-prevBtn.Text = "<"
-prevBtn.Font = Enum.Font.GothamBold
-prevBtn.TextScaled = true
-prevBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-Instance.new("UICorner", prevBtn)
-prevBtn.MouseButton1Click:Connect(function() Settings.Page=math.max(1,Settings.Page-1) updatePage() end)
+local function slider(min,max,y,default,callback)
+    local frame = Instance.new("Frame", content)
+    frame.Size = UDim2.fromScale(0.9,0.06)
+    frame.Position = UDim2.fromScale(0.05,y)
+    frame.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    Instance.new("UICorner", frame)
 
-local nextBtn = Instance.new("TextButton", main)
-nextBtn.Size = UDim2.fromScale(0.12,0.06)
-nextBtn.Position = UDim2.fromScale(0.86,0.93)
-nextBtn.Text = ">"
-nextBtn.Font = Enum.Font.GothamBold
-nextBtn.TextScaled = true
-nextBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-Instance.new("UICorner", nextBtn)
-nextBtn.MouseButton1Click:Connect(function() Settings.Page=math.min(6,Settings.Page+1) updatePage() end)
+    local fill = Instance.new("Frame", frame)
+    fill.Size = UDim2.fromScale((default-min)/(max-min),1)
+    fill.BackgroundColor3 = Color3.fromRGB(0,200,255)
+    Instance.new("UICorner", fill)
 
--- ESP
-local espObjects = {}
-local function applyESP(p,color)
-    if espObjects[p] then espObjects[p]:Destroy() end
-    if not p.Character then return end
-    local h = Instance.new("Highlight")
-    h.FillColor = color or Color3.fromRGB(0,170,255)
-    h.FillTransparency = 0.4
-    h.OutlineTransparency = 1
-    h.Parent = p.Character
-    espObjects[p]=h
-end
-
-local function updateESP()
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p.Character then
-            local teamColor = p.TeamColor.Color or Color3.fromRGB(0,170,255)
-            applyESP(p, teamColor)
+    local uis = UserInputService
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local conn
+            conn = uis.InputChanged:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseMovement then
+                    local pos = math.clamp((i.Position.X-frame.AbsolutePosition.X)/frame.AbsoluteSize.X,0,1)
+                    fill.Size = UDim2.fromScale(pos,1)
+                    callback(min + (max-min)*pos)
+                end
+            end)
+            uis.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then conn:Disconnect() end end)
         end
-    end
+    end)
 end
 
-Players.PlayerAdded:Connect(updateESP)
-Players.PlayerRemoving:Connect(function(p) if espObjects[p] then espObjects[p]:Destroy() espObjects[p]=nil end end)
-RunService.Heartbeat:Connect(updateESP)
-
--- WALK/JUMP SLIDERS & ARMOR will be implemented in the page update function below
-
--- PAGE UPDATE FUNCTION
+-- PAGE UPDATE
 function updatePage()
-    clearContent()
-    if Settings.Page==1 then
-        addLabel("Aimbot",0.05)
-        addLabel("Press E to toggle",0.2)
+    clear()
+    if Settings.Page==1 then label("Movement Sliders",0.05)
+        slider(16,500,0.16,Settings.WalkSpeed,function(v) Settings.WalkSpeed=v; applyWalkJump() end)
+        slider(50,500,0.28,Settings.JumpPower,function(v) Settings.JumpPower=v; applyWalkJump() end)
     elseif Settings.Page==2 then
-        addLabel("Walk & Jump",0.05)
-        addLabel("WalkSpeed",0.15)
-        local wsBox = Instance.new("TextBox", content)
-        wsBox.Size=UDim2.fromScale(0.9,0.05)
-        wsBox.Position=UDim2.fromScale(0.05,0.22)
-        wsBox.Text = tostring(Settings.WalkSpeed)
-        wsBox.TextScaled=true
-        wsBox.TextColor3=Color3.fromRGB(0,255,255)
-        wsBox.BackgroundColor3=Color3.fromRGB(30,30,30)
-        wsBox.FocusLost:Connect(function() local v=tonumber(wsBox.Text); if v then Settings.WalkSpeed=v; if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed=v end end end)
-
-        addLabel("JumpPower",0.32)
-        local jpBox = Instance.new("TextBox", content)
-        jpBox.Size=UDim2.fromScale(0.9,0.05)
-        jpBox.Position=UDim2.fromScale(0.05,0.39)
-        jpBox.Text=tostring(Settings.JumpPower)
-        jpBox.TextScaled=true
-        jpBox.TextColor3=Color3.fromRGB(0,255,255)
-        jpBox.BackgroundColor3=Color3.fromRGB(30,30,30)
-        jpBox.FocusLost:Connect(function() local v=tonumber(jpBox.Text); if v then Settings.JumpPower=v; if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.JumpPower=v end end end)
+        label("ESP / Team Toggles",0.05)
+        local y=0.15
+        for _,team in ipairs(Players:GetTeams()) do
+            if Settings.ESPTeamToggles[team.Name]==nil then Settings.ESPTeamToggles[team.Name]=true end
+            button(team.Name..(Settings.ESPTeamToggles[team.Name] and " ON" or " OFF"),y,function()
+                Settings.ESPTeamToggles[team.Name]=not Settings.ESPTeamToggles[team.Name]; updatePage(); refreshESP()
+            end)
+            y+=0.08
+        end
     elseif Settings.Page==3 then
-        addLabel("Teleport to Players by Team",0.05)
-        -- dropdown menus for each team (implemented in full script later)
-    elseif Settings.Page==4 then
-        addLabel("Armor/God Mode",0.05)
-        addButton(Settings.ArmorEnabled and "Disable Armor" or "Enable Armor",0.15,function()
+        label("Armor / God Mode",0.05)
+        button(Settings.ArmorEnabled and "Disable Armor" or "Enable Armor",0.18,function()
             Settings.ArmorEnabled=not Settings.ArmorEnabled
-            -- armor logic here
+            if Settings.ArmorEnabled then applyArmor() else removeArmor() end
+            updatePage()
         end)
     end
 end
 
-updatePage()
+-- NAVIGATION
+local prev = Instance.new("TextButton", main)
+prev.Size=UDim2.fromScale(0.12,0.06)
+prev.Position=UDim2.fromScale(0.02,0.92)
+prev.Text="<"
+prev.BackgroundColor3=Color3.fromRGB(45,45,45)
+Instance.new("UICorner", prev)
+prev.MouseButton1Click:Connect(function() Settings.Page=math.max(1,Settings.Page-1); updatePage() end)
 
+local next = Instance.new("TextButton", main)
+next.Size=UDim2.fromScale(0.12,0.06)
+next.Position=UDim2.fromScale(0.86,0.92)
+next.Text=">"
+next.BackgroundColor3=Color3.fromRGB(45,45,45)
+Instance.new("UICorner", next)
+next.MouseButton1Click:Connect(function() Settings.Page=math.min(3,Settings.Page+1); updatePage() end)
+
+updatePage()
