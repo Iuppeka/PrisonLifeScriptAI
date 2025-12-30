@@ -1,14 +1,3 @@
--- main.lua
-local SCRIPT_VERSION = "1.0.0"
-print("Running PrisonLifeScriptAI v" .. SCRIPT_VERSION)
-
--- Your actual script code below
-print("Hello from main.lua!") -- Example code
-
-
--- FULLY FIXED ROBLOX LOCAL SCRIPT
--- Movement, ESP per team, Armor/GodMode, clean GUI with proper pages
-
 -- FULL ROBLOX LOCAL SCRIPT (FINAL VERSION)
 -- FEATURES: Starter, Movement, Aimbot, ESP, Coordinates HUD, Teleports, Weapons, Armor, Click-to-destroy, Hack Detection, Sounds
 
