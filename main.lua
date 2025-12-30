@@ -1,3 +1,9 @@
+-- main.lua
+local SCRIPT_VERSION = "1.0.0"
+print("Running PrisonLifeScriptAI v" .. SCRIPT_VERSION)
+
+-- your actual script code below
+
 -- FULL REFACTORED ROBLOX LOCAL SCRIPT
 
 repeat task.wait() until game:IsLoaded()
